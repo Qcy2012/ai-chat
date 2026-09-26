@@ -1,48 +1,79 @@
-import { StreamingTextResponse } from 'ai';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
-// 扩展Cloudflare环境类型声明
-declare global {
-  namespace Cloudflare {
-    interface Env {
-      AI: any;
-    }
+// 每次请求都要实时调用模型，禁止静态化
+export const dynamic = 'force-dynamic';
+
+type ChatMessage = {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+};
+
+const DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
+/** 兼容不同版本：优先同步取用，SSG 场景下回退到异步模式 */
+async function getAI(): Promise<any> {
+  try {
+    const { env } = getCloudflareContext();
+    return (env as any).AI;
+  } catch {
+    const { env } = await getCloudflareContext({ async: true });
+    return (env as any).AI;
   }
 }
 
-export const runtime = 'edge';
-
-export async function POST(req: Request, { env }: { env: any }) {
+export async function POST(req: Request) {
   try {
-    const { messages } = await req.json();
+    const body = (await req.json()) as {
+      messages?: ChatMessage[];
+      model?: string;
+    };
 
-    // ✅ 直接调用同账号下Workers AI，无需任何API密钥！
-    // 使用 @cf/meta/llama-3.3-70b-instruct-fp8-fast 平衡速度和效果
-    // 也可以换成其他模型，比如：
-    // - @cf/meta/llama-4-scout-17b-16e-instruct (更快)
-    // - @cf/deepseek-ai/deepseek-r1-distill-qwen-32b (推理更强)
-    // - @cf/glm/glm-4.5-air (中文更优，字节跳动)
-    const stream = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
-      messages: messages.map((m: any) => ({
-        role: m.role,
-        content: m.content,
-      })),
+    const messages = body.messages ?? [];
+    const model = body.model || DEFAULT_MODEL;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return Response.json(
+        { error: '参数错误', message: 'messages 不能为空' },
+        { status: 400 }
+      );
+    }
+
+    const AI = await getAI();
+    if (!AI) {
+      return Response.json(
+        {
+          error: 'AI 绑定未找到',
+          message:
+            '没有拿到 Workers AI 绑定。请确认 wrangler.jsonc 里已配置 "ai": { "binding": "AI" }，并且已执行 opennextjs-cloudflare build 后部署。',
+        },
+        { status: 500 }
+      );
+    }
+
+    // 直接调用同账号下的 Workers AI —— 不需要任何 API Key
+    const stream = (await AI.run(model, {
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
       stream: true,
-      max_tokens: 4096,
+      max_tokens: 2048,
       temperature: 0.7,
-    });
+    })) as ReadableStream;
 
-    // 返回SSE流式响应，实现打字机效果
-    return new StreamingTextResponse(stream as any, {
+    // 原样透传 SSE 流，前端逐块解析，实现打字机效果
+    return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
       },
     });
   } catch (error: any) {
-    return new Response(
-      JSON.stringify({ error: 'AI服务调用失败', message: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    return Response.json(
+      {
+        error: 'AI 服务调用失败',
+        message: error?.message ?? String(error),
+      },
+      { status: 500 }
     );
   }
 }

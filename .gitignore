@@ -4,5 +4,8 @@ node_modules
 .wrangler
 .env*
 !.env.example
+.dev.vars
 .DS_Store
 *.log
+cloudflare-env.d.ts
+tsconfig.tsbuildinfo

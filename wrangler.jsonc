@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // 构建产物入口，由 opennextjs-cloudflare build 生成，不要改
+  "main": ".open-next/worker.js",
+  "name": "cloudflare-wai-chat",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": [
+    // 启用 Node.js API（Next.js 必需）
+    "nodejs_compat",
+    // 允许应用内发起 fetch
+    "global_fetch_strictly_public"
+  ],
+  // 静态资源绑定，不要改
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  // OpenNext 自引用服务，service 必须与上面的 name 一致
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "cloudflare-wai-chat"
+    }
+  ],
+  // ★ 关键：Workers AI 绑定，代码里通过 env.AI 调用，无需任何 API Key
+  "ai": {
+    "binding": "AI"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

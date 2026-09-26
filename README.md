@@ -1,95 +1,116 @@
 # Cloudflare Workers AI 零密钥聊天助手
 
-> ✅ **不需要任何API密钥，不需要实名认证，不需要信用卡，注册Cloudflare账号就能直接部署！**
+> ✅ 不需要任何 API Key、不需要实名认证、不需要信用卡，注册 Cloudflare 账号即可部署。
 
-基于 Cloudflare Pages + Workers AI + Next.js 搭建的在线AI聊天网站，全程零外部依赖，免费额度完全足够个人使用。
+基于 **Next.js 15 + @opennextjs/cloudflare + Workers AI** 搭建的在线 AI 聊天网站。
+所有模型调用都在同一个 Cloudflare 账号内通过 `env.AI` 绑定完成，不经过任何第三方接口。
 
-## 🚀 核心优势
+---
 
-- **零密钥**：直接调用同账号下Workers AI，不需要配置任何第三方API密钥
-- **免实名**：只用注册Cloudflare账号，不需要国内平台的身份证/人脸认证
-- **零成本**：Cloudflare Pages和Workers AI个人免费额度完全够用
-- **全球CDN**：自动部署到全球300+边缘节点，访问速度极快
-- **VSCode深色主题**：熟悉的代码编辑器风格，护眼舒适
-- **流式输出**：打字机效果，实时响应
+## ⚠️ 本版本修复了什么
 
-## 📦 快速部署（5分钟上线）
+上一版项目在 `npm install` / 构建时会报 `npm error code ERESOLVE`，本版已彻底修复，改动如下：
 
-### 方式一：直接连接GitHub部署（推荐）
+| # | 问题 | 原因 | 修复 |
+|---|------|------|------|
+| 1 | `npm error code ERESOLVE` | 模板锁 `next@14.2.5`，而 `@opennextjs/cloudflare@1.20.6` 要求 `next >= 15.5.24 < 16` | 升级到 `next@15.5.26` + `react@19` |
+| 2 | 同类冲突 | `wrangler@^3.72.0` 不满足适配器要求的 `wrangler ^4.125.0` | 升级到 `wrangler@^4.141.0` |
+| 3 | 潜在冲突 | `ai@^3` 与 `@ai-sdk/react@^1` 版本代际不匹配 | **移除 AI SDK 依赖**，改为直接透传 Workers AI 的 SSE 流 |
+| 4 | 配置文件错误 | 用的是 `wrangler.toml`，且**缺少 `[ai]` 绑定**，代码里 `env.AI` 必然为 undefined | 改为官方规范的 `wrangler.jsonc`，并加上 `"ai": { "binding": "AI" }` |
+| 5 | 缺少必要文件 | 没有 `open-next.config.ts`、`.dev.vars`、`public/_headers` | 已按官方文档补齐 |
+| 6 | 构建失败 | `next.config.js` 里写了 `experimental.runtime = 'edge'`，与 OpenNext 冲突 | 移除，并改用 `next.config.mjs` |
+| 7 | CI 构建失败 | `initOpenNextCloudflareForDev()` 在非交互环境会尝试连接远端代理而报错 | 限制为仅 `NODE_ENV=development` 时启用 |
+| 8 | 部署方式错误 | 文档写的是 Cloudflare **Pages**，而 OpenNext 适配器应部署到 **Workers** | 已更正为 Workers 部署流程 |
 
-1. 把本项目代码推送到你自己的GitHub仓库
-2. 登录 [Cloudflare控制台](https://dash.cloudflare.com/)，进入 **Workers & Pages** → **创建应用程序** → **Pages** → **连接到Git**
-3. 选择你刚推送的仓库，构建设置如下：
-   - **框架预设**：`Next.js`
-   - **构建命令**：`npm run build`
-   - **构建输出目录**：`.open-next`
-   - **环境变量**：添加 `NODE_VERSION=20`
-4. 点击 **保存并部署**，等待2分钟即可上线！
+> 验证结果：`npm install` ✅ · `next build` ✅ · `opennextjs-cloudflare build` ✅ · `wrangler deploy --dry-run` ✅（正确识别 `env.AI` 绑定）
 
-### 方式二：本地命令行部署
+---
+
+## 📦 快速开始
 
 ```bash
 # 1. 安装依赖
 npm install
 
-# 2. 本地预览测试
+# 2. 本地开发（Node 环境，热更新）
 npm run dev
 
-# 3. 登录Cloudflare（会自动打开浏览器授权）
+# 3. 登录 Cloudflare（会打开浏览器授权，只需一次）
 npx wrangler login
 
-# 4. 一键部署
+# 4. 本地模拟真实 Worker 运行时预览（推荐用这个测 AI 功能）
+npm run preview
+
+# 5. 一键部署上线
 npm run deploy
 ```
 
-## 🎯 可选模型切换
+部署完成后会得到一个免费的 `https://cloudflare-wai-chat.<你的子域>.workers.dev` 域名。
 
-在 `app/api/chat/route.ts` 中可以自由切换Workers AI支持的开源模型：
+---
 
-| 模型ID | 特点 |
-|--------|------|
-| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | **默认**，效果均衡，速度快 |
-| `@cf/meta/llama-4-scout-17b-16e-instruct` | Llama 4最新小模型，速度极快 |
-| `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | 推理能力强，适合代码、数学题 |
-| `@cf/glm/glm-4.5-air` | 智谱开源版，中文效果更好 |
-| `@cf/qwen/qwen2.5-coder-32b-instruct` | 代码专用模型，Debug写代码首选 |
+## 🔗 连接 GitHub 自动部署（可选）
 
-完整模型列表可以在 [Cloudflare Workers AI 模型目录](https://developers.cloudflare.com/workers-ai/models/) 查看，全部免费可用。
+Cloudflare Workers Builds 是「构建命令 + 部署命令」两段式流程，配置如下：
 
-## 🔧 本地开发
+| 设置项 | 值 |
+|--------|-----|
+| Build command | `npx opennextjs-cloudflare build` |
+| Deploy command | `npx wrangler deploy` |
+| Node 版本 | 建议 `20` 或更高（在环境变量里设 `NODE_VERSION=20`） |
 
-```bash
-npm run dev
-```
+> 注意：不要沿用旧文档里的「构建输出目录 `.open-next`」写法，那是 Cloudflare Pages 的旧流程，对 OpenNext 不适用。
 
-打开 http://localhost:3000 即可预览，修改代码会自动热更新。
+---
 
-## 📝 项目结构
+## 🎯 模型切换
+
+界面右上角下拉框可直接切换，模型 ID 定义在 `app/page.tsx` 的 `MODELS` 数组里：
+
+| 模型 ID | 特点 |
+|---------|------|
+| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | **默认**，效果均衡 |
+| `@cf/meta/llama-4-scout-17b-16e-instruct` | 速度极快 |
+| `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | 推理 / 数学强 |
+| `@cf/qwen/qwen2.5-coder-32b-instruct` | 代码专用 |
+| `@cf/glm/glm-4.5-air` | 中文更优 |
+
+完整列表见 [Cloudflare Workers AI 模型目录](https://developers.cloudflare.com/workers-ai/models/)。
+
+---
+
+## 📁 项目结构
 
 ```
 cloudflare-wai-chat/
 ├── app/
-│   ├── api/chat/route.ts   # AI接口，直接调用Workers AI，零密钥
-│   ├── globals.css         # 全局样式（VSCode深色主题）
-│   ├── layout.tsx          # 页面布局
-│   └── page.tsx            # 聊天主界面
-├── wrangler.toml           # Cloudflare配置
-├── next.config.js          # Next.js配置
-├── tailwind.config.js      # Tailwind主题配置
-└── package.json            # 依赖配置
+│   ├── api/chat/route.ts    # AI 接口：getCloudflareContext() 取 env.AI，零密钥
+│   ├── globals.css          # VSCode 深色主题
+│   ├── layout.tsx
+│   └── page.tsx             # 聊天界面（手写 SSE 解析 + 模型选择）
+├── public/_headers          # 静态资源缓存策略
+├── wrangler.jsonc           # ★ Cloudflare 配置（含 AI 绑定）
+├── open-next.config.ts      # OpenNext 适配器配置
+├── next.config.mjs
+├── .dev.vars                # 本地开发环境变量
+├── tailwind.config.js
+├── tsconfig.json
+└── TROUBLESHOOTING.md       # 常见报错排查
 ```
 
-## ✨ 进阶扩展建议
+---
 
-1. **添加对话历史**：接入Cloudflare D1免费数据库，保存用户聊天记录
-2. **多模型切换**：在界面上加模型选择下拉框，让用户自由选模型
-3. **密码保护**：加一个简单的Basic Auth，只有知道密码的人能访问
-4. **代码解释器**：复用你之前写的在线IDE，让AI生成的代码可以直接运行
-5. **多模态支持**：接入图片/文件上传，让AI能分析图片和文档
+## ✨ 进阶扩展
+
+1. **对话历史**：接入 Cloudflare D1 免费数据库持久化聊天记录
+2. **访问保护**：加一层 Basic Auth，避免公开后被人刷免费额度
+3. **算法特色功能**：复用你已有的在线 IDE，做「AI 帮你 Debug 算法代码」「AI 生成题解」
+4. **RAG 知识库**：把 OI Wiki / 自己的题解导入 Vectorize 向量库，让回答基于专业资料
+
+---
 
 ## ⚠️ 注意事项
 
-1. 免费额度有每日调用限制，个人使用完全够用，不要做大规模公开服务
-2. 不要在对话中发送敏感内容，数据会经过Cloudflare处理
-3. 如果需要更强的中文能力，可以后续实名智谱AI，增加一个备用模型接口
-4. 部署完成后可以在Pages设置里绑定自己的自定义域名，自动配HTTPS
+1. Workers AI 免费额度有每日调用上限，个人使用足够，不建议直接当大规模公开服务
+2. 本地 `npm run preview` 需要先 `npx wrangler login`：AI 绑定在本地开发时会走远端代理会话，未登录会报 `Failed to start the remote proxy session`
+3. 原生 Windows 下 OpenNext / Wrangler 偶发 WASM 路径问题，建议用 WSL 或 Linux 环境
