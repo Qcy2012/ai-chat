@@ -57,9 +57,25 @@ Cloudflare Workers Builds 是「构建命令 + 部署命令」两段式流程，
 |--------|-----|
 | Build command | `npx opennextjs-cloudflare build` |
 | Deploy command | `npx wrangler deploy` |
-| Node 版本 | 建议 `20` 或更高（在环境变量里设 `NODE_VERSION=20`） |
+| Node 版本 | **不需要配**。Workers Builds 默认已是 Node.js 24.18.0，满足全部依赖要求；仓库内已附 `.nvmrc`（`24.18.0`）自动锁定版本 |
 
 > 注意：不要沿用旧文档里的「构建输出目录 `.open-next`」写法，那是 Cloudflare Pages 的旧流程，对 OpenNext 不适用。
+
+### 关于 Node 版本（常见疑问）
+
+**不需要在控制台添加 `NODE_VERSION` 环境变量。** 原因：
+
+- Workers Builds 的默认 Node 版本已是 **24.18.0**（2026-07 起），而本项目只要求 Node ≥ 18.18（Next.js 15）与 ≥ 18（Wrangler 4），默认值已完全满足
+- Node 20 已于 2026 年 4 月停止维护（EOL），**手动设 `NODE_VERSION=20` 等于主动降级到已停止安全更新的版本，不建议**
+- 仓库内已附 `.nvmrc`（内容为 `24.18.0`），Cloudflare 会优先读取它来锁定版本，无需再配环境变量
+
+版本读取优先级：`.nvmrc` / `.node-version` 文件 > `NODE_VERSION` 环境变量 > 平台默认值。
+
+⚠️ 两个容易踩的坑：
+1. Cloudflare **会忽略 `package.json` 里的 `engines` 字段**，别指望用它来指定版本
+2. `.nvmrc` 里必须写**精确版本号**，写 `lts/*`、`lts/hydrogen` 这类别名会导致构建失败
+
+若确实想改用其他版本，在 **Settings → Build → Build Variables and Secrets** 添加 `NODE_VERSION` 即可（该入口位于 Workers 项目设置里，不是 Pages 的「环境变量」页）。
 
 ---
 
