@@ -1,0 +1,6 @@
+name = "cloudflare-wai-chat"
+compatibility_date = "2026-09-26"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers AI 已经在同账号下自动绑定，无需单独配置KV
+# 如需自定义模型可在此处添加配置

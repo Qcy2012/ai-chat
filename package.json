@@ -1,0 +1,29 @@
+{
+  "name": "cloudflare-wai-chat",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "opennextjs-cloudflare dev --experimental-worker",
+    "build": "opennextjs-cloudflare build",
+    "preview": "opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare deploy"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ai": "^3.4.33",
+    "@ai-sdk/react": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "tailwindcss": "^3.4.7",
+    "postcss": "^8.4.39",
+    "autoprefixer": "^10.4.19",
+    "@opennextjs/cloudflare": "^1.0.0",
+    "wrangler": "^3.72.0"
+  }
+}
