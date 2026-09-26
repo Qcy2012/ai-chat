@@ -2,26 +2,39 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+/**
+ * 可选模型清单。
+ * 标识均以 Cloudflare 官方文档为准，改动前请先核对，写错会直接调用失败。
+ * 括号里标注的是免费额度（10000 Neurons/天）下的粗略可聊轮数。
+ */
 const MODELS = [
   {
+    id: '@cf/zai-org/glm-4.7-flash',
+    name: 'GLM-4.7 Flash（默认 · 中文 · 约380轮）',
+  },
+  {
+    id: '@cf/qwen/qwen3-30b-a3b-fp8',
+    name: 'Qwen3 30B A3B（极速 · 约450轮）',
+  },
+  {
+    id: '@cf/meta/llama-3.1-8b-instruct',
+    name: 'Llama 3.1 8B（最省 · 约410轮）',
+  },
+  {
     id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-    name: 'Llama 3.3 70B（默认 · 均衡）',
+    name: 'Llama 3.3 70B（均衡 · 约70轮）',
   },
   {
     id: '@cf/meta/llama-4-scout-17b-16e-instruct',
-    name: 'Llama 4 Scout 17B（极速）',
+    name: 'Llama 4 Scout 17B（长文本 · 约150轮）',
   },
   {
     id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
-    name: 'DeepSeek R1 Distill 32B（推理）',
+    name: 'DeepSeek R1 Distill 32B（推理 · 约33轮）',
   },
   {
     id: '@cf/qwen/qwen2.5-coder-32b-instruct',
     name: 'Qwen2.5 Coder 32B（代码）',
-  },
-  {
-    id: '@cf/glm/glm-4.5-air',
-    name: 'GLM-4.5 Air（中文）',
   },
 ];
 
@@ -40,6 +53,8 @@ export default function ChatPage() {
   const [model, setModel] = useState(MODELS[0].id);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // 服务端返回的今日剩余调用次数；未启用每日上限时为 null
+  const [quota, setQuota] = useState<number | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -103,8 +118,12 @@ export default function ChatPage() {
         } catch {
           /* 响应不是 JSON，保留默认提示 */
         }
-        throw new Error(detail);
+        // 429 是配额/频率限制，单独加个前缀方便区分
+        throw new Error(res.status === 429 ? `🚦 ${detail}` : detail);
       }
+
+      const remain = res.headers.get('X-Quota-Remaining');
+      setQuota(remain !== null ? Number(remain) : null);
 
       if (!res.body) throw new Error('服务端没有返回数据流');
 
@@ -174,8 +193,7 @@ export default function ChatPage() {
             <p className="text-xs text-gray-500">
               零密钥 · 免实名 · Cloudflare 边缘部署
             </p>
-          </div>
-        </div>
+          </div>        </div>
 
         <div className="flex items-center gap-2">
           <select
@@ -291,6 +309,12 @@ export default function ChatPage() {
 
       <p className="mt-4 text-center text-xs text-gray-600">
         Powered by Cloudflare Workers AI · 免费额度支持 · 数据在边缘节点处理
+        {quota !== null && (
+          <>
+            <br />
+            今日剩余调用次数：<span className="text-gray-400">{quota}</span>
+          </>
+        )}
       </p>
     </main>
   );

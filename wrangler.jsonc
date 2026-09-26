@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   // 构建产物入口，由 opennextjs-cloudflare build 生成，不要改
   "main": ".open-next/worker.js",
-  "name": "qcy2012-github-io-ai-chat",
+  "name": "cloudflare-wai-chat",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": [
     // 启用 Node.js API（Next.js 必需）
@@ -19,13 +19,40 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "qcy2012-github-io-ai-chat"
+      "service": "cloudflare-wai-chat"
     }
   ],
   // ★ 关键：Workers AI 绑定，代码里通过 env.AI 调用，无需任何 API Key
   "ai": {
     "binding": "AI"
   },
+  // ★ 每 IP 速率限制：防爬虫突发刷量。
+  //   period 只能是 10 或 60；namespace_id 是你自定义的整数标识。
+  //   无需创建任何资源，也不需要额外费用。
+  "ratelimits": [
+    {
+      "name": "CHAT_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 6,
+        "period": 60
+      }
+    }
+  ],
+  // 每日调用总量上限，代码读取 env.DAILY_LIMIT；设为 "0" 表示不限制
+  "vars": {
+    "DAILY_LIMIT": "300"
+  },
+  // ★ 可选：启用「每日总量上限」时才需要。
+  //   步骤：控制台 → Workers & Pages → KV → 创建命名空间 → 复制 ID，
+  //        把下面的注释解开，并把 id 换成你自己的命名空间 ID。
+  //   不启用时整块保持注释状态，站点照常运行（只是不做每日总量限制）。
+  // "kv_namespaces": [
+  //   {
+  //     "binding": "CHAT_KV",
+  //     "id": "在这里填入你的 KV 命名空间 ID"
+  //   }
+  // ],
   "observability": {
     "enabled": true
   }

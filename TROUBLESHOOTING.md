@@ -112,3 +112,88 @@ environment variable for wrangler to work.
 **原因**：Windows 文件名不允许包含 `?`，而 WASM 资源文件名里带了 `?module` 后缀。
 
 **修法**：改用 WSL2 或 Linux / GitHub Codespaces 环境执行构建，官方明确建议不要在原生 Windows 下跑 OpenNext。
+
+---
+
+## 8. 发消息返回 429「请求太频繁了，请等一分钟再试。」
+
+这是**第一道闸门（每 IP 速率限制）**生效了，不是故障。
+
+**含义**：同一个 IP 在 60 秒内请求超过 6 次。默认值定义在 `wrangler.jsonc`：
+
+```jsonc
+"ratelimits": [
+  {
+    "name": "CHAT_RATE_LIMITER",
+    "namespace_id": "1001",
+    "simple": { "limit": 6, "period": 60 }
+  }
+]
+```
+
+**调整方法**：改 `limit` 的值即可。注意两点：
+
+- `period` **只能是 10 或 60**，填别的值会导致部署失败
+- 计数器是**按 Cloudflare 边缘节点（地区）分别计算**的，不是全球统一计数，所以实际放行量会略高于设定值，这属于预期行为
+
+**想彻底关掉**：删掉整个 `ratelimits` 数组，重新部署。代码里做了判断，绑定不存在时会自动跳过这道闸门。
+
+---
+
+## 9. 发消息返回 429「今天的调用次数已用完（上限 N 次/天）」
+
+这是**第二道闸门（每日总量上限）**生效了。
+
+**含义**：当天累计调用已达 `vars.DAILY_LIMIT` 设定的次数。
+
+**恢复时间**：北京时间**早上 8:00**（UTC 00:00）自动重置，不需要任何操作。
+
+**调整方法**：改 `wrangler.jsonc` 里的：
+
+```jsonc
+"vars": {
+  "DAILY_LIMIT": "300"   // 改成你要的次数；填 "0" 表示不限制
+}
+```
+
+**注意**：只有绑定了 `CHAT_KV` 时这道闸门才会生效。没绑定 KV 的话，`DAILY_LIMIT` 不起作用，站点也不会报这个错。
+
+---
+
+## 10. 部署时报 `ratelimits` / Rate Limiting 相关错误
+
+**排查顺序**：
+
+1. **Wrangler 版本太低**：Rate Limiting 绑定需要 **Wrangler ≥ 4.36.0**，本项目用的是 `^4.141.0`，正常不会触发
+2. **`period` 取值非法**：只允许 `10` 或 `60`，其它值会直接部署失败
+3. **`namespace_id` 类型错误**：必须是**字符串形式**的整数，例如 `"1001"`，写成数字 `1001` 可能报错
+
+**确认绑定是否配置正确**，本地执行：
+
+```bash
+npx wrangler deploy --dry-run
+```
+
+输出里应能看到：
+
+```
+env.CHAT_RATE_LIMITER (6 requests/60s)      Rate Limit
+env.AI                                      AI
+env.DAILY_LIMIT ("300")                     Environment Variable
+```
+
+**如果确认是这项绑定导致部署失败**（例如账号不支持），直接删掉 `wrangler.jsonc` 里的整个 `ratelimits` 数组再部署即可，功能不受影响——代码会检测不到绑定并自动跳过限流。
+
+---
+
+## 11. 部署时报 `KV namespace ... not found` 或 `id` 无效
+
+**原因**：启用了每日上限，但 `kv_namespaces` 里的 `id` 不是你自己账号下的有效命名空间 ID。
+
+**修法**：
+
+1. 控制台 → **Workers & Pages** → **KV** → 确认命名空间已创建
+2. 复制该命名空间的 **ID**（32 位十六进制字符串），粘贴到 `wrangler.jsonc` 的 `id` 字段
+3. `binding` 必须正好是 `CHAT_KV`
+
+**暂时不想折腾**：把 `kv_namespaces` 整块注释掉再部署，站点照常运行（只是不做每日总量限制）。

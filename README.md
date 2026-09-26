@@ -26,6 +26,89 @@
 
 ---
 
+## 🆕 本次新增
+
+### 1. 默认模型换成 GLM-4.7 Flash
+
+| 项 | 改动前 | 改动后 |
+|---|---|---|
+| 默认模型 | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | **`@cf/zai-org/glm-4.7-flash`** |
+| 免费额度可聊轮数 | 约 70 轮/天 | **约 380 轮/天** |
+
+同样是每天 10000 Neurons 的免费额度，换模型后可用轮数提升 5 倍以上。
+
+> 模型标识以 Cloudflare 官方更新日志为准：`@cf/zai-org/glm-4.7-flash`，131072 token 上下文。
+> 上一版里写的 `@cf/glm/glm-4.5-air` 是错误标识，调用必然失败，本次已一并修正。
+
+### 2. 两道闸门，防止绑了域名后被刷光额度
+
+公开可访问的站点最怕被爬虫反复打接口，把当天的免费额度提前吃光。现在加了双层保护：
+
+| 闸门 | 机制 | 是否需要额外配置 | 默认状态 |
+|------|------|------------------|----------|
+| **第一道：每 IP 速率限制** | Cloudflare 原生 Rate Limiting 绑定，每 IP 每分钟最多 6 次 | ❌ 不需要，已在 `wrangler.jsonc` 配好 | ✅ **已启用** |
+| **第二道：每日总量上限** | 通过 KV 记录当天调用次数，默认 300 次/天 | ✅ 需要创建一个 KV 命名空间 | ⚙️ **可选** |
+
+**第一道闸门零配置**，部署即生效——爬虫突发刷接口会被直接拦掉（返回 429 并提示「请求太频繁了」）。
+
+**第二道闸门**用于防止「细水长流」式的额度消耗。启用方法见下方「启用每日总量上限」。
+
+两道闸门都会**优雅降级**：万一绑定不存在或服务异常，请求会正常放行，不会把站点拖挂。
+
+> ⚠️ 免费额度本身也有一层硬保护：Workers AI 每天 10000 Neurons 用完后，后续请求会**直接报错，不会产生任何费用**（免费计划没有支付方式，扣不了钱）。
+
+### 3. 界面显示剩余调用次数
+
+启用每日上限后，页面底部会实时显示「今日剩余调用次数」。
+
+---
+
+## 🚦 启用每日总量上限（可选，约 2 分钟）
+
+第二道闸门默认是关闭的（配置块保持注释状态），开启步骤：
+
+1. **创建 KV 命名空间**
+   Cloudflare 控制台 → **Workers & Pages** → 左侧 **KV** → **创建命名空间**
+   名称随意，例如 `chat-quota`，创建后复制它的 **ID**
+
+2. **填入配置文件**
+   打开 `wrangler.jsonc`，找到被注释掉的 `kv_namespaces` 块，解开注释并填入 ID：
+
+   ```jsonc
+   "kv_namespaces": [
+     {
+       "binding": "CHAT_KV",
+       "id": "把这里换成你复制的命名空间 ID"
+     }
+   ],
+   ```
+
+   > `binding` 必须正好是 `CHAT_KV`，代码靠这个名字找它。
+
+3. **调整上限（可选）**
+   同一文件里的 `vars.DAILY_LIMIT` 就是每日上限，默认 `"300"`。改成 `"0"` 表示不限制。
+
+4. **重新部署**
+   ```bash
+   npm run deploy
+   ```
+
+**为什么默认关闭？** 因为 KV 绑定里的 ID 必须是你自己的命名空间 ID，填错会导致部署失败。所以默认保持注释状态，让站点先跑起来，你想开的时候再开。
+
+### KV 免费额度提醒
+
+| 项 | 免费额度 |
+|---|---|
+| 读取 | 100,000 次/天 |
+| 写入（不同 key） | 1,000 次/天 |
+| **写入（同一个 key）** | **1 次/秒** |
+
+每日上限默认设 300，一天最多产生约 300 次写入，远低于 1000 次的天花板，安全。
+
+至于「同一个 key 每秒只能写 1 次」——高并发时部分计数写入会失败，代码里**直接忽略这类失败**。这是安全阀而不是计费系统，宁可少计几次，也不能影响正常对话。
+
+---
+
 ## 📦 快速开始
 
 ```bash
@@ -81,15 +164,23 @@ Cloudflare Workers Builds 是「构建命令 + 部署命令」两段式流程，
 
 ## 🎯 模型切换
 
-界面右上角下拉框可直接切换，模型 ID 定义在 `app/page.tsx` 的 `MODELS` 数组里：
+界面右上角下拉框可直接切换，模型 ID 定义在 `app/page.tsx` 的 `MODELS` 数组里。
 
-| 模型 ID | 特点 |
-|---------|------|
-| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | **默认**，效果均衡 |
-| `@cf/meta/llama-4-scout-17b-16e-instruct` | 速度极快 |
-| `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | 推理 / 数学强 |
-| `@cf/qwen/qwen2.5-coder-32b-instruct` | 代码专用 |
-| `@cf/glm/glm-4.5-air` | 中文更优 |
+下表的「约可聊轮数」按「输入 800 token + 输出 600 token」的一轮中文对话估算，对应每天 10000 Neurons 的免费额度：
+
+| 模型 ID | 特点 | 约可聊轮数 |
+|---------|------|-----------|
+| `@cf/zai-org/glm-4.7-flash` | **默认**，中文原生、便宜 | **约 380 轮** |
+| `@cf/qwen/qwen3-30b-a3b-fp8` | MoE 架构，速度极快 | 约 450 轮 |
+| `@cf/meta/llama-3.1-8b-instruct` | 最省额度 | 约 410 轮 |
+| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | 效果均衡，但烧得快 | 约 70 轮 |
+| `@cf/meta/llama-4-scout-17b-16e-instruct` | 长上下文（131k） | 约 150 轮 |
+| `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | 推理 / 数学强，最贵 | 约 33 轮 |
+| `@cf/qwen/qwen2.5-coder-32b-instruct` | 代码专用 | — |
+
+> ⚠️ **别拿 DeepSeek R1 当日常聊天用**，一天只能聊 30 多轮就见底了，留给硬核推理场景。
+>
+> ⚠️ 部分模型（如 `kimi-k2.6`、`glm-5.2`、`deepseek-v4-pro`）**必须有付费方式才能调用**，点了报错不一定是代码问题，可能只是这个模型要付费。上表里的模型都是免费档可直接用的。
 
 完整列表见 [Cloudflare Workers AI 模型目录](https://developers.cloudflare.com/workers-ai/models/)。
 
@@ -105,7 +196,7 @@ cloudflare-wai-chat/
 │   ├── layout.tsx
 │   └── page.tsx             # 聊天界面（手写 SSE 解析 + 模型选择）
 ├── public/_headers          # 静态资源缓存策略
-├── wrangler.jsonc           # ★ Cloudflare 配置（含 AI 绑定）
+├── wrangler.jsonc           # ★ Cloudflare 配置（AI 绑定 + 每 IP 速率限制 + 每日上限参数）
 ├── open-next.config.ts      # OpenNext 适配器配置
 ├── next.config.mjs
 ├── .dev.vars                # 本地开发环境变量
@@ -119,7 +210,7 @@ cloudflare-wai-chat/
 ## ✨ 进阶扩展
 
 1. **对话历史**：接入 Cloudflare D1 免费数据库持久化聊天记录
-2. **访问保护**：加一层 Basic Auth，避免公开后被人刷免费额度
+2. **访问保护**：最彻底的做法是开 **Cloudflare Access**（Zero Trust，50 用户以内免费），加一层登录墙，爬虫根本进不来；控制台配置即可，不用改代码
 3. **算法特色功能**：复用你已有的在线 IDE，做「AI 帮你 Debug 算法代码」「AI 生成题解」
 4. **RAG 知识库**：把 OI Wiki / 自己的题解导入 Vectorize 向量库，让回答基于专业资料
 
@@ -127,6 +218,6 @@ cloudflare-wai-chat/
 
 ## ⚠️ 注意事项
 
-1. Workers AI 免费额度有每日调用上限，个人使用足够，不建议直接当大规模公开服务
+1. Workers AI 免费额度是**每天 10000 Neurons**（约 70~450 轮对话，取决于选哪个模型），UTC 00:00（北京时间早上 8:00）重置，**用不完不累积**；超额只会报错，免费计划没有支付方式，不会产生任何费用
 2. 本地 `npm run preview` 需要先 `npx wrangler login`：AI 绑定在本地开发时会走远端代理会话，未登录会报 `Failed to start the remote proxy session`
 3. 原生 Windows 下 OpenNext / Wrangler 偶发 WASM 路径问题，建议用 WSL 或 Linux 环境
