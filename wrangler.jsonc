@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   // 构建产物入口，由 opennextjs-cloudflare build 生成，不要改
   "main": ".open-next/worker.js",
-  "name": "cloudflare-wai-chat",
+  "name": "qcy2012-github-io-ai-chat",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": [
     // 启用 Node.js API（Next.js 必需）
@@ -19,7 +19,7 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "cloudflare-wai-chat"
+      "service": "qcy2012-github-io-ai-chat"
     }
   ],
   // ★ 关键：Workers AI 绑定，代码里通过 env.AI 调用，无需任何 API Key
@@ -41,7 +41,7 @@
   ],
   // 每日调用总量上限，代码读取 env.DAILY_LIMIT；设为 "0" 表示不限制
   "vars": {
-    "DAILY_LIMIT": "300"
+    "DAILY_LIMIT": "0"
   },
   // ★ 可选：启用「每日总量上限」时才需要。
   //   步骤：控制台 → Workers & Pages → KV → 创建命名空间 → 复制 ID，
