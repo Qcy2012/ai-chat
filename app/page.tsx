@@ -191,7 +191,7 @@ export default function ChatPage() {
               Workers AI Chat
             </h1>
             <p className="text-xs text-gray-500">
-              零密钥 · 免实名 · Cloudflare 边缘部署
+              零密钥 · Cloudflare 边缘部署
             </p>
           </div>        </div>
 
@@ -228,7 +228,7 @@ export default function ChatPage() {
             <div className="text-5xl mb-4">💬</div>
             <p>开始你的对话吧！这是一个完全基于 Cloudflare Workers AI 的零密钥 AI 助手</p>
             <p className="mt-2 text-xs">
-              不需要任何 API Key，不需要实名认证，部署完就能用
+              不需要任何 API Key，部署完就能用
             </p>
           </div>
         )}
@@ -308,7 +308,7 @@ export default function ChatPage() {
       </form>
 
       <p className="mt-4 text-center text-xs text-gray-600">
-        Powered by Cloudflare Workers AI · 免费额度支持 · 数据在边缘节点处理
+        Powered by Cloudflare Workers AI
         {quota !== null && (
           <>
             <br />
