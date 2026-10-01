@@ -124,9 +124,23 @@ export async function POST(req: Request) {
     }
 
     // ---------- 调用模型 ----------
+    // 注入系统提示词，要求使用Markdown格式输出
+    const systemPrompt = `你是一个专业的AI助手，请严格遵循以下回答规范：
+1. 使用标准Markdown格式组织回答内容
+2. 重点内容使用**加粗**标注，长回答使用适当的标题分层
+3. 代码必须使用带语言标识的代码块（如 \`\`\`cpp 、\`\`\`python），禁止用普通文本粘贴代码
+4. 使用有序/无序列表梳理要点，复杂对比使用Markdown表格
+5. 引用内容使用 > 引用块标注
+6. 全部使用中文回答`;
+
+    const finalMessages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...messages.map((m) => ({ role: m.role, content: m.content })),
+    ];
+
     // 直接调用同账号下的 Workers AI —— 不需要任何 API Key
     const stream = (await AI.run(model, {
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: finalMessages,
       stream: true,
       max_tokens: 2048,
       temperature: 0.7,

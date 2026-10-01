@@ -24,3 +24,10 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #5a5a5a;
 }
+
+/* 代码块样式优化 */
+.hljs {
+  background: #1e1e1e !important;
+  padding: 0 !important;
+}
+

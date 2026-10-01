@@ -1,6 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import 'highlight.js/styles/vs2015.css';
+import { useCallback, useEffect, useRef, useState, memo } from 'react';
 
 /**
  * 可选模型清单。
@@ -47,26 +51,60 @@ function newId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+// Markdown 消息用 memo 避免流式输出时重复渲染整棵树
+const MarkdownMessage = memo(({ content }: { content: string }) => (
+  <div className="prose prose-invert max-w-none [&_pre]:bg-[#1e1e1e] [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:overflow-x-auto [&_code]:font-mono [&_code]:text-sm [&_:not(pre)>code]:bg-[#3c3c3c] [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:rounded [&_:not(pre)>code]:text-orange-300 [&_h1]:text-[#569cd6] [&_h2]:text-[#569cd6] [&_h3]:text-[#4ec9b0] [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-5 [&_blockquote]:border-l-4 [&_blockquote]:border-[#569cd6] [&_blockquote]:pl-4 [&_blockquote]:text-gray-400 [&_blockquote]:italic [&_table]:w-full [&_table]:border-collapse [&_th]:bg-[#2d2d2d] [&_th]:p-2 [&_th]:border [&_th]:border-[#3c3c3c] [&_td]:p-2 [&_td]:border [&_td]:border-[#3c3c3c] [&_tr:nth-child(even)]:bg-[#2a2a2a] [&_a]:text-[#4ec9b0] [&_a]:underline [&_hr]:border-[#3c3c3c] [&_img]:rounded-md [&_img]:max-w-full">
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeHighlight]}
+    >
+      {content}
+    </ReactMarkdown>
+  </div>
+));
+MarkdownMessage.displayName = 'MarkdownMessage';
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [model, setModel] = useState(MODELS[0].id);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  // 服务端返回的今日剩余调用次数；未启用每日上限时为 null
   const [quota, setQuota] = useState<number | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // 自动滚动到底部
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
 
+  // 自动调整 textarea 高度
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input]);
+
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Enter 发送，Shift+Enter 换行
+      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+        e.preventDefault();
+        void send();
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [input, loading, messages, model]
+  );
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -118,7 +156,6 @@ export default function ChatPage() {
         } catch {
           /* 响应不是 JSON，保留默认提示 */
         }
-        // 429 是配额/频率限制，单独加个前缀方便区分
         throw new Error(res.status === 429 ? `🚦 ${detail}` : detail);
       }
 
@@ -152,7 +189,6 @@ export default function ChatPage() {
               json.response ?? json.choices?.[0]?.delta?.content ?? '';
             if (piece) append(String(piece));
           } catch {
-            // 非 JSON 的纯文本块，直接追加
             append(payload);
           }
         }
@@ -160,7 +196,6 @@ export default function ChatPage() {
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
         setError(e?.message ?? '请求出错');
-        // 出错时移除空的占位气泡
         setMessages((prev) =>
           prev.filter(
             (m, i) =>
@@ -179,28 +214,29 @@ export default function ChatPage() {
   }, [input, loading, messages, model]);
 
   return (
-    <main className="min-h-screen bg-vscode-bg text-gray-100 p-4 max-w-4xl mx-auto">
+    <main className="min-h-screen bg-[#1e1e1e] text-gray-100 p-4 max-w-4xl mx-auto">
       {/* 顶部标题栏 */}
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center font-bold text-white">
-            W
+            AI
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-vscode-blue">
-              Workers AI Chat
+            <h1 className="text-2xl font-bold text-[#569cd6]">
+              AI-Chat | Qcy's Blog
             </h1>
             <p className="text-xs text-gray-500">
               零密钥 · Cloudflare 边缘部署
             </p>
-          </div>        </div>
+          </div>
+        </div>
 
         <div className="flex items-center gap-2">
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
             disabled={loading}
-            className="px-3 py-2 text-sm rounded-md bg-vscode-panel border border-vscode-border text-gray-200 outline-none focus:border-vscode-blue disabled:opacity-50"
+            className="px-3 py-2 text-sm rounded-md bg-[#252526] border border-[#3c3c3c] text-gray-200 outline-none focus:border-[#569cd6] disabled:opacity-50"
           >
             {MODELS.map((m) => (
               <option key={m.id} value={m.id}>
@@ -211,7 +247,7 @@ export default function ChatPage() {
           <button
             onClick={() => setMessages([])}
             disabled={loading}
-            className="px-3 py-2 text-sm rounded-md border border-vscode-border hover:bg-vscode-panel transition-colors disabled:opacity-50"
+            className="px-3 py-2 text-sm rounded-md border border-[#3c3c3c] hover:bg-[#252526] transition-colors disabled:opacity-50"
           >
             清空对话
           </button>
@@ -221,14 +257,14 @@ export default function ChatPage() {
       {/* 消息列表 */}
       <div
         ref={scrollRef}
-        className="space-y-4 mb-4 h-[62vh] overflow-y-auto p-4 rounded-lg bg-vscode-panel border border-vscode-border"
+        className="space-y-4 mb-4 h-[62vh] overflow-y-auto p-4 rounded-lg bg-[#252526] border border-[#3c3c3c]"
       >
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-gray-500 text-center px-6">
             <div className="text-5xl mb-4">💬</div>
             <p>开始你的对话吧！这是一个完全基于 Cloudflare Workers AI 的零密钥 AI 助手</p>
             <p className="mt-2 text-xs">
-              不需要任何 API Key，部署完就能用
+              不需要任何 API Key，部署完就能用 · 支持 Markdown 渲染和代码高亮
             </p>
           </div>
         )}
@@ -236,31 +272,44 @@ export default function ChatPage() {
         {messages.map((m) => (
           <div
             key={m.id}
-            className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
           >
+            {/* 头像 */}
+            <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+              m.role === 'user' 
+                ? 'bg-[#0e639c] text-white' 
+                : 'bg-gradient-to-br from-orange-400 to-orange-600 text-white'
+            }`}>
+              {m.role === 'user' ? '我' : 'AI'}
+            </div>
+
+            {/* 消息气泡 */}
             <div
-              className={`max-w-[85%] p-4 rounded-lg whitespace-pre-wrap leading-relaxed ${
+              className={`max-w-[85%] p-4 rounded-lg leading-relaxed ${
                 m.role === 'user'
-                  ? 'bg-vscode-button text-white rounded-tr-none'
-                  : 'bg-vscode-border text-gray-100 rounded-tl-none'
+                  ? 'bg-[#0e639c] text-white rounded-tr-none'
+                  : 'bg-[#3c3c3c] text-gray-100 rounded-tl-none'
               }`}
             >
-              {m.content ||
-                (loading ? (
-                  <span className="inline-flex gap-1 align-middle">
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                    <span
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                      style={{ animationDelay: '150ms' }}
-                    />
-                    <span
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                      style={{ animationDelay: '300ms' }}
-                    />
-                  </span>
-                ) : (
-                  <span className="text-gray-500">（无内容）</span>
-                ))}
+              {m.role === 'user' ? (
+                <p className="whitespace-pre-wrap">{m.content}</p>
+              ) : m.content ? (
+                <MarkdownMessage content={m.content} />
+              ) : loading ? (
+                <span className="inline-flex gap-1 align-middle">
+                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                  <span
+                    className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    style={{ animationDelay: '150ms' }}
+                  />
+                  <span
+                    className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    style={{ animationDelay: '300ms' }}
+                  />
+                </span>
+              ) : (
+                <span className="text-gray-500">（无内容）</span>
+              )}
             </div>
           </div>
         ))}
@@ -273,26 +322,29 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* 输入框 */}
+      {/* 多行输入框 */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void send();
         }}
-        className="flex gap-2"
+        className="flex gap-2 items-end"
       >
-        <input
+        <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="输入你想问的问题..."
+          onKeyDown={handleKeyDown}
+          placeholder="输入你想问的问题...（Enter 发送，Shift+Enter 换行）"
           disabled={loading}
-          className="flex-1 px-4 py-3 rounded-lg bg-vscode-panel border border-vscode-border text-white outline-none focus:border-vscode-blue transition-colors disabled:opacity-50"
+          rows={1}
+          className="flex-1 px-4 py-3 rounded-lg bg-[#252526] border border-[#3c3c3c] text-white outline-none focus:border-[#569cd6] transition-colors disabled:opacity-50 resize-none font-sans"
         />
         {loading ? (
           <button
             type="button"
             onClick={stop}
-            className="px-6 py-3 bg-red-700 hover:bg-red-600 rounded-lg font-medium transition-colors"
+            className="px-6 py-3 bg-red-700 hover:bg-red-600 rounded-lg font-medium transition-colors shrink-0"
           >
             停止
           </button>
@@ -300,7 +352,7 @@ export default function ChatPage() {
           <button
             type="submit"
             disabled={!input.trim()}
-            className="px-6 py-3 bg-vscode-button hover:bg-vscode-button-hover rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-3 bg-[#0e639c] hover:bg-[#1177bb] rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             发送
           </button>
@@ -308,7 +360,7 @@ export default function ChatPage() {
       </form>
 
       <p className="mt-4 text-center text-xs text-gray-600">
-        Powered by Cloudflare Workers AI
+        Powered by Cloudflare Workers AI · 免费额度支持 · 数据在边缘节点处理
         {quota !== null && (
           <>
             <br />
